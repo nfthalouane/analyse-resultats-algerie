@@ -1,40 +1,121 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
 import io
-import base64
-import os
 
 # إعداد الصفحة
 st.set_page_config(
     page_title="تحليل نتائج الطور المتوسط - الجزائر",
     page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# CSS للتصميم الاحترافي
-st.markdown("""
-<style>
-    :root {
-        --primary-color: #1f57a4;
-        --secondary-color: #2c7bb6;
-        --accent-color: #00a651;
-        --background-color: #f8f9fa;
-        --card-color: #ffffff;
-        --text-color: #333333;
-        --border-radius: 12px;
-        --box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+# عنوان التطبيق
+st.title("📊 تحليل نتائج الطور المتوسط")
+st.markdown("تحليل شامل لنتائج الفصول الدراسية - الجزائر")
+
+# الشريط الجانبي
+with st.sidebar:
+    st.markdown("## ⚙️ إعدادات التحليل")
+    uploaded_file = st.file_uploader("📤 رفع ملف النتائج", type=['xlsx', 'xls'])
+    
+    annee_scolaire = st.selectbox("📚 السنة الدراسية", 
+                                 ["أولى متوسط", "ثانية متوسط", "ثالثة متوسط", "رابعة متوسط"])
+    
+    semestre = st.selectbox("📅 الفصل الدراسي",
+                           ["الفصل الأول", "الفصل الثاني", "الفصل الثالث", "السنة كاملة"])
+
+# دالة لتحميل بيانات مثال
+@st.cache_data
+def load_sample_data():
+    np.random.seed(42)
+    data = {
+        'رقم التسجيل': range(1, 31),
+        'الاسم': [f'طالب {i}' for i in range(1, 31)],
+        'اللغة العربية': np.random.uniform(8, 20, 30),
+        'الرياضيات': np.random.uniform(6, 18, 30),
+        'العلوم الطبيعية': np.random.uniform(9, 19, 30)
     }
     
-    .main {
-        background-color: var(--background-color);
+    for col in ['اللغة العربية', 'الرياضيات', 'العلوم الطبيعية']:
+        data[col] = np.round(data[col] * 4) / 4
+    
+    return pd.DataFrame(data)
+
+# دالة لقراءة الملف
+def read_file(file):
+    try:
+        if file.name.endswith('.xlsx'):
+            df = pd.read_excel(file, engine='openpyxl')
+        else:
+            df = pd.read_excel(file, engine='xlrd')
+        return df
+    except:
+        try:
+            df = pd.read_excel(file, engine='openpyxl')
+            return df
+        except Exception as e:
+            st.error(f"خطأ في قراءة الملف: {str(e)}")
+            return None
+
+# دالة للحسابات الإحصائية
+def calculate_statistics(df, subject_columns):
+    stats_data = {}
+    for subject in subject_columns:
+        if subject in df.columns:
+            valid_scores = df[subject].dropna()
+            valid_scores = valid_scores[(valid_scores >= 0) & (valid_scores <= 20)]
+            if len(valid_scores) > 0:
+                stats_data[subject] = {
+                    'المتوسط': round(valid_scores.mean(), 2),
+                    'أعلى درجة': round(valid_scores.max(), 2),
+                    'أدنى درجة': round(valid_scores.min(), 2),
+                    'عدد الطلاب': len(valid_scores),
+                    'النجاح (%)': round((valid_scores >= 10).sum() / len(valid_scores) * 100, 2)
+                }
+    return stats_data
+
+# الرئيسية
+if uploaded_file is not None:
+    df = read_file(uploaded_file)
+    if df is not None:
+        st.success("✅ تم تحميل الملف بنجاح!")
+else:
+    df = load_sample_data()
+    st.info("ℹ️ يتم عرض بيانات مثال.")
+
+if df is not None:
+    # تحديد أعمدة المواد
+    subject_columns = [col for col in df.columns if col not in ['رقم التسجيل', 'الاسم']]
+    
+    # حساب الإحصائيات
+    stats_data = calculate_statistics(df, subject_columns)
+    
+    # عرض الملخص
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("👥 عدد الطلاب", len(df))
+    
+    # عرض الإحصائيات
+    if stats_data:
+        st.markdown("## 📈 الإحصائيات")
+        stats_df = pd.DataFrame(stats_data).T
+        st.dataframe(stats_df.style.format("{:.2f}"))
+        
+        # رسم بياني بسيط
+        subjects = list(stats_data.keys())
+        averages = [stats_data[subject]['المتوسط'] for subject in subjects]
+        
+        fig = px.bar(x=subjects, y=averages, 
+                    labels={'x': 'المادة', 'y': 'المتوسط'},
+                    title='متوسط الدرجات حسب المادة')
+        st.plotly_chart(fig)
+
+else:
+    st.error("❌ لم يتم تحميل أي بيانات.")        background-color: var(--background-color);
     }
     
     .stApp {
@@ -503,4 +584,5 @@ st.markdown("""
     <p>📊 تطبيق تحليل نتائج الطور المتوسط - وزارة التربية والتعليم - الجزائر</p>
     <p>© 2024 - جميع الحقوق محفوظة</p>
 </div>
+
 """, unsafe_allow_html=True)
